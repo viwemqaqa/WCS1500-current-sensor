@@ -32,6 +32,8 @@ float readings[FILTER_SIZE];
 int readIndex = 0;
 float readTotal = 0;
 
+int a = 0;
+
 void setup() {
   Serial.begin(115200);
   analogReadResolution(12);
