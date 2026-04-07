@@ -33,6 +33,8 @@ The output is **ratiometric**, meaning it scales proportionally with the supply 
 | **ESP32 breakout board** (30-pin) | Microcontroller with 12-bit ADC |
 | **10kΩ resistor** | Voltage divider (high side) |
 | **6.8kΩ resistor** | Voltage divider (low side) |
+| **LED (built-in or external)** | Calibration status indicator |
+| **220Ω resistor** | Current limiting for external LED (optional) |
 
 
 
@@ -100,6 +102,12 @@ This maps the sensor's 0.3–4.7V output to approximately 0.12–1.90V at the ES
 | Aout | Through voltage divider → ESP32 GPIO34 |
 | Dout | (Optional) ESP32 GPIO35 for overcurrent alarm |
 
+The calibration status LED uses **GPIO2**, which is the built-in LED on most ESP32 30-pin development boards — no extra wiring required. If your board doesn't have a built-in LED on GPIO2, wire an external LED through a 220Ω current-limiting resistor:
+
+```
+ESP32 GPIO2 ─── 220Ω ─── LED(+) ─── LED(-) ─── GND
+```
+
 ### Notes
 
 - **GPIO34** is an input-only ADC pin on the ESP32 — it cannot be used as an output, which makes it a safe choice for analog reading.
@@ -114,6 +122,18 @@ This maps the sensor's 0.3–4.7V output to approximately 0.12–1.90V at the ES
 ### Startup calibration
 
 With no current flowing, the code takes 500 readings from the sensor and averages them to establish the zero-current offset voltage. This compensates for component tolerances, supply voltage variation, and ESP32 ADC non-linearity. The expected offset is approximately VDD / 2, but the actual measured value through the divider and ADC may differ slightly.
+
+### LED status indicator
+
+A status LED on GPIO2 provides a clear visual signal of when it's safe to apply power to the circuit being measured:
+
+| LED state | Meaning | Action |
+|-----------|---------|--------|
+| **Blinking** (~4 Hz) | Calibration in progress | Do **NOT** apply load current |
+| **Rapid flashing** (10× fast) | Zero offset out of range — wiring error | Check wiring and reset |
+| **Solid ON** | Calibration complete | Safe to energise the circuit |
+
+This is especially useful when running the system without a serial monitor attached, or in field deployments where you need an unambiguous "ready" signal before switching on the load.
 
 ### Reading the sensor
 
@@ -166,6 +186,8 @@ The WCS1500 has a temperature drift of ±0.2 mV/°C. At 10.12 mV/A sensitivity, 
 | Readings very noisy | Missing bypass capacitor or poor connections | Add 0.1µF cap near sensor; check breadboard connections |
 | Current always negative | Wire direction through sensor hole is reversed | Flip the wire 180° through the hole |
 | Readings saturate / clamp | Current exceeds ±200A or divider resistors are wrong | Verify resistor values; check that current is within sensor range |
+| LED never turns solid ON | Calibration failed sanity check (rapid flashing) | Check sensor wiring, VDD value in code, and ensure no current during startup |
+| LED doesn't light at all | Wrong GPIO for your board variant | Try GPIO5 or wire an external LED to a free GPIO and update `LED_PIN` |
 
 
 
