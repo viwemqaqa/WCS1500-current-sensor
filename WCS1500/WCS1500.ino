@@ -1,14 +1,16 @@
 // =============================================================
 // WCS1500 Hall Current Sensor + ESP32 (30-pin breakout board)
 // Aout -> 10kΩ -> GPIO34 -> 6.8kΩ -> GND
+// Calibration LED -> GPIO2 (built-in) or external LED + 220Ω -> GND
 // Measured VDD = 4.6V
 // =============================================================
 
 const int SENSOR_PIN = 34;
+const int LED_PIN    = 2;   // Built-in LED on most ESP32 dev boards
 
 // --- Sensor specs from datasheet ---
-const float VDD          = 4.6;       // Measured supply voltage
-const float SENSITIVITY  = 0.011 * (VDD / 5.0);  // Ratiometric: ~10.12 mV/A
+const float VDD          = 4.6;
+const float SENSITIVITY  = 0.011 * (VDD / 5.0);
 const float V_OUT_MIN    = 0.3;
 const float V_OUT_MAX    = VDD - 0.3;
 
@@ -35,16 +37,24 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(SENSOR_PIN, ADC_11db);
 
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
   for (int i = 0; i < FILTER_SIZE; i++) readings[i] = 0;
 
   Serial.println("=== WCS1500 Calibration ===");
   Serial.println("Ensure NO current is flowing...");
-  //delay(3000);
+  Serial.println("LED BLINKING = calibrating, do NOT apply power");
 
   float sum = 0;
   const int calSamples = 500;
   for (int i = 0; i < calSamples; i++) {
     sum += readSensorVoltage();
+
+    // Blink LED during calibration (toggle every 25 samples ≈ 125ms)
+    if (i % 25 == 0) {
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    }
     delay(5);
   }
   zeroOffset = sum / calSamples;
@@ -55,14 +65,24 @@ void setup() {
   Serial.print(VDD / 2.0, 1);
   Serial.println(" V)");
 
-  // Adjusted sanity check for ratiometric + ADC non-linearity
   float expectedZero = VDD / 2.0;
   if (zeroOffset < (expectedZero - 0.8) || zeroOffset > (expectedZero + 0.5)) {
     Serial.println("WARNING: Zero offset out of expected range!");
     Serial.println("Check wiring: VDD->5V, GND->GND, Aout->divider->GPIO34");
+    // Rapid error blink pattern
+    for (int i = 0; i < 10; i++) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
+      delay(100);
+    }
   } else {
     Serial.println("Calibration OK!");
   }
+
+  // LED solid ON = ready, safe to apply power
+  digitalWrite(LED_PIN, HIGH);
+  Serial.println(">>> LED ON: Calibration complete. Safe to apply power. <<<");
 
   Serial.println("\n  Sensor V  |  Current (A)  |  Power @ 12V");
   Serial.println("  ---------|--------------|-------------");
@@ -73,7 +93,7 @@ float readSensorVoltage() {
   const int samples = 100;
   for (int i = 0; i < samples; i++) {
     total += analogRead(SENSOR_PIN);
-    delayMicroseconds(100);
+    delayMicroseconds(50);
   }
   float avgADC = (float)total / samples;
   float pinVoltage = (avgADC / ADC_RESOLUTION) * ADC_REF;
@@ -99,5 +119,5 @@ void loop() {
   Serial.printf("  %6.3f V  |  %+8.1f A   |  %7.1f W\n",
                 sensorV, current, power);
 
-  delay(200);
+  delay(100);
 }
